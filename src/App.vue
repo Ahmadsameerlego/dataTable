@@ -1,211 +1,180 @@
 <template>
-  <n-p>
-    You have selected {{ checkedRowKeys.length }} row{{
-      checkedRowKeys.length < 2 ? '' : 's'
-    }}.
-  </n-p>
-  <div>
-          <n-button @click="sortName">Sort </n-button>
-  </div>
+   <div class="card">
+    <div class="form-group position-relative">
+          <InputText v-model="filters['global'].value" class="tableSearch" placeholder="يمكنك البحث " />
+    </div>
 
-  <n-data-table
-    ref="dataTableInst"
-    :columns="columns"
-    :data="data"
-    :pagination="pagination"
-    :row-key="rowKey"
-    @update:checked-row-keys="handleCheck"
-  />
+    <div>
+        <MultiSelect :modelValue="selectedColumns" :options="columns" optionLabel="header" @update:modelValue="onToggle"
+          display="chip" placeholder="Select Columns" />
+    </div>
+
+    <div>
+        <Button type="button" icon="pi pi-filter-slash" label="Clear" outlined @click="clearFilter()" />
+    </div>
+
+    <div>
+        <Button type="button" label="Sort" outlined @click="sort()" />
+    </div>
+    <div>
+
+    </div>
+      <DataTable 
+          :value="products"
+          tableStyle="min-width: 50rem"
+          paginator :rows="20"  
+          :rowsPerPageOptions="[5, 10, 20, 50]" 
+          sortMode="multiple"
+          v-model:filters="filters"
+          showGridlines 
+          stripedRows 
+          editMode="cell"
+          v-model:selection="selectedProduct"
+          :selectAll="selectAll"
+          :totalRecords="totalRecords"
+          @row-select="onRowSelect"
+           @row-unselect="onRowUnselect"
+          @select-all-change="onSelectAllChange"
+          @cell-edit-complete="onCellEditComplete"
+          dataKey="id" 
+          ref="dt"
+          selectionMode="single" :metaKeySelection="metaKey" 
+          :removableSort="sorted"
+        >
+          <Column selectionMode="multiple" headerStyle="width: 3rem"></Column>
+          <!-- <Column field="phone" sortable  header="phone"></Column>
+          <Column field="name" sortable  header="Name"></Column>
+          <Column field="email" sortable  header="email"></Column>
+          <Column field="status" sortable  header="status"></Column> -->
+          <Column v-for="col of selectedColumns" :key="col.field" :field="col.field" :header="col.header" sortable style="width: 25%">
+              <template #body="{ data, field }">
+                  {{ field === 'price' ? formatCurrency(data[field]) : data[field] }}
+              </template>
+              <template #editor="{ data, field }">
+                  <template v-if="field !== 'price'">
+                      <InputText v-model="data[field]" autofocus />
+                  </template>
+                  <template v-else>
+                      <InputNumber v-model="data[field]" mode="currency" currency="USD" locale="en-US" autofocus />
+                  </template>
+              </template>
+          </Column>
+          
+      </DataTable>
+
+        <Button type="button"  label="addItem" outlined @click="addNewRow()" />
+  </div>
 </template>
 
 <script>
-import { defineComponent, ref , h, nextTick, computed } from "vue";
-import { NDataTable ,NInput , NButton } from 'naive-ui'
+import DataTable from 'primevue/datatable';
+import Column from 'primevue/column';
+import { FilterMatchMode } from 'primevue/api';
+import InputText from 'primevue/inputtext';
 
-
-const ShowOrEdit = defineComponent({
-  props: {
-    value: [String, Number],
-    onUpdateValue: [Function, Array]
-  },
-  setup (props) {
-    const isEdit = ref(false)
-    const inputRef = ref(null)
-    const inputValue = ref(props.value)
-    function handleOnClick () {
-      isEdit.value = true
-      nextTick(() => {
-        inputRef.value.focus()
-      })
-    }
-    function handleChange () {
-      props.onUpdateValue(inputValue.value)
-      isEdit.value = false
-    }
-    return () =>
-      h(
-        'div',
-        {
-          style: 'min-height: 22px',
-          onClick: handleOnClick
-        },
-        isEdit.value
-          ? h(NInput, {
-            ref: inputRef,
-            value: inputValue.value,
-            onUpdateValue: (v) => {
-              inputValue.value = v
-            },
-            onChange: handleChange,
-            onBlur: handleChange
-          })
-          : props.value
-      )
-  }
-})
-
-const createData = () => {
-  return[
-  {
-    key: 0,
-    name: 'John Brown',
-    age: 32,
-    address: 'New York No. 1 Lake Park',
-    chinese: 98,
-    math: 60,
-    english: 70
-  },
-  {
-    key: 1,
-    name: 'Jim Green',
-    age: 42,
-    address: 'London No. 1 Lake Park',
-    chinese: 98,
-    math: 66,
-    english: 89
-  },
-  {
-    key: 2,
-    name: 'Joe Black',
-    age: 32,
-    address: 'Sidney No. 1 Lake Park',
-    chinese: 98,
-    math: 66,
-    english: 89
-  },
-  {
-    key: 3,
-    name: 'Jim Red',
-    age: 32,
-    address: 'London No. 2 Lake Park',
-    chinese: 88,
-    math: 99,
-    english: 89
-  }
-]
-
-}
-
-export default defineComponent({
-  setup() {
-    const data = ref(createData())
-
-    const checkedRowKeysRef = ref([]);
-
-    const getDataIndex = (key) => {
-      return data.value.findIndex((item) => item.key === key)
-    }
-    const page = ref(1)
-
-    const handlePageChange = (curPage) => {
-      page.value = curPage
-    }
-
-    const paginationRef = computed(() => ({
-      pageSize: 10,
-      page: page.value
-    }))
-
-    const dataTableInstRef = ref(null)
-
+// import ColumnGroup from 'primevue/columngroup';   // optional
+// import Row from 'primevue/row';                   // optional
+import { ProductService } from '@/service/ProdcutService';
+import MultiSelect from 'primevue/multiselect';
+import Button from 'primevue/button';
+export default ({
+  data() {
     return {
-      data,
-      checkedRowKeys: checkedRowKeysRef,
-      pagination: {
-        pageSize: 10
+      products: null,
+      selectedProduct: null,
+      metaKey: true ,
+      filters: {
+            global: { value: null, matchMode: FilterMatchMode.CONTAINS },
       },
-      dataTableInst: dataTableInstRef,
-      sortName () {
-        dataTableInstRef.value.sort('name', 'ascend')
-      },
+      selectAll: false,
+      totalRecords: 0,
 
-      
-
-      paginationRef,
-      handlePageChange,
       columns: [
-        {
-          type: "selection",
-          disabled(row) {
-            return row.name === "Edward King 3";
-          }
-        },
-        {
-          title: 'Name',
-          key: 'name',
-          sorter: (row1, row2) => row1.name - row2.name,
-          width: 150,
-          render (row) {
-            const index = getDataIndex(row.key)
-            return h(ShowOrEdit, {
-              value: row.name,
-              onUpdateValue (v) {
-                data.value[index].name = v
-              }
-            })
-          }
-        },
-        {
-          title: 'Age',
-          key: 'age',
-              sorter: (row1, row2) => row1.age - row2.age,
-          width: 100,
-          render (row) {
-            const index = getDataIndex(row.key)
-            return h(ShowOrEdit, {
-              value: row.age,
-              onUpdateValue (v) {
-                data.value[index].age = v
-              }
-            })
-          }
-        },
-        {
-          title: 'Address',
-          key: 'address',
-          render (row) {
-            const index = getDataIndex(row.key)
-            return h(ShowOrEdit, {
-              value: row.address,
-              onUpdateValue (v) {
-                data.value[index].address = v
-              }
-            })
-          }
-        }
-      ],
+            { field: 'email', header: 'Code' },
+            { field: 'name', header: 'Name' },
+            { field: 'phone', header: 'Quantity' },
+            { field: 'status', header: 'Price' }
+        ]
+      ,
+      selectedColumns: null,
+      sorted : false
+    }   
+  }, 
+  methods: {
+    addNewRow() {
+      console.log(this.$refs.dt)
+      this.$refs.dt.value.push({
 
-      rowKey: (row) => row.address,
-      handleCheck(rowKeys) {
-        checkedRowKeysRef.value = rowKeys;
+      })
+    },  
+    clearFilter() {
+        this.initFilters();
+    },
+    initFilters() {
+        this.filters = {
+            global: { value: null, matchMode: FilterMatchMode.CONTAINS },
+        };
+    },
+    sort() {
+      this.sorted = !this.sorted;
+    },  
+
+    onToggle(value) {
+          this.selectedColumns = this.columns.filter(col => value.includes(col));
       },
+    onSelectAllChange(event) {
+          const selectAll = event.checked;
 
+          if (selectAll) {
+              ProductService.getProductsMini().then(data => {
+                  this.selectAll = true;
+                  this.selectedProduct = data.customers;
+              });
+          }
+          else {
+              this.selectAll = false;
+              this.selectedProduct = [];
+          }
+    },
+    onRowSelect() {
+      this.selectAll = this.selectedProduct.length === this.totalRecords
+    },
+    onRowUnselect() {
+      this.selectAll = false;
+    },
+    onCellEditComplete(event) {
+            let { data, newValue, field } = event;
 
-    };
+            switch (field) {
+                case 'quantity':
+                case 'price':
+                    if (this.isPositiveInteger(newValue)) data[field] = newValue;
+                    else event.preventDefault();
+                    break;
+
+                default:
+                    if (newValue.trim().length > 0) data[field] = newValue;
+                    else event.preventDefault();
+                    break;
+            }
+        },
   },
+    
+
+  mounted() {
+    ProductService.getProductsMini().then((data) => (this.products = data));
+    this.selectedColumns = this.columns;
+
+  }, 
   components: {
-    NDataTable,
-    NButton
+    DataTable,
+    Column,
+    InputText,
+    MultiSelect,
+    Button
+    // Row,
+    // ColumnGroup
+    
   }
 });
 </script>
